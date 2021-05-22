@@ -1,5 +1,9 @@
 package com.zsxg.im.gateway.tcp;
 
+import com.zsxg.im.common.Constants;
+import com.zsxg.im.common.Message;
+import com.zsxg.im.common.Request;
+import com.zsxg.im.protocol.AuthenticateRequestProto;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
@@ -8,10 +12,9 @@ import io.netty.channel.socket.SocketChannel;
 
 
 public class GatewayTcpHandler extends ChannelInboundHandlerAdapter {
-
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        System.out.println("跟客户端完成连接：" + ctx.channel().remoteAddress().toString());
+        System.out.println("已经跟客户端建立连接，客户端地址为：" + ctx.channel());
     }
 
     /**
@@ -22,8 +25,8 @@ public class GatewayTcpHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         SocketChannel socketChannel = (SocketChannel) ctx.channel();
-        NettyChannelManager nettyChannelManager  = NettyChannelManager.getInstance();
-        nettyChannelManager.removeChannel(socketChannel);
+        SessionManager sessionManager = SessionManager.getInstance();
+        sessionManager.removeSession(socketChannel);
 
         System.out.println("检测到客户端的连接断开，删除其连接缓存：" + socketChannel.remoteAddress().toString());
     }
@@ -34,33 +37,29 @@ public class GatewayTcpHandler extends ChannelInboundHandlerAdapter {
         // 一旦token认证完毕之后，就应该把这个客户端的SocketChannel给缓存起来
         // 后面如果有需要对这个客户端推送一个消息过去，直接从缓存里面找到这个SocketChannel，进行推送就可以了
         // 此时服务端就可以主动把消息发送给客户端了
-        NettyChannelManager nettyChannelManager = NettyChannelManager.getInstance();
 
-        String message = (String) msg;
+        // 获取请求处理组件
+        RequestHandler requestHandler = RequestHandler.getInstance();
 
-        System.out.println("接收到一条消息：" + message);
+        // 解析收到的请求
+        Message message = new Message((ByteBuf) msg);
+        System.out.println("收到一个消息，消息类型为：" + message.getMessageType());
 
-        if(message.startsWith("发起用户认证")) {
-            String token = message.split("\\|")[2];
-            // 使用token去找SSO单点登录系统进行认证，看这个用户是否合法的登录用户
+        // 根据请求的类型判断要走什么处理逻辑
+        // 如果是认证请求
+        if(message.getMessageType() == Constants.MESSAGE_TYPE_REQUEST) {
+            Request request = message.toRequest();
 
-            // 如果认证成功的话，就可以把这个连接缓存起来了
-            String userId = message.split("\\|")[1];
-            nettyChannelManager.addChannel(userId, (SocketChannel) ctx.channel());
-
-            System.out.println("对用户发起的认证确认完毕，缓存客户端长连接，userId=" + userId);
-        } else {
-            String userId = message.split("\\|")[1];;
-
-            if(!nettyChannelManager.existChannel(userId)) {
-                System.out.println("未认证用户，不能处理请求");
-
-                byte[] responseBytes = "未认证用户，不能处理请求$_".getBytes();
-                ByteBuf responseBuffer = Unpooled.buffer(responseBytes.length);
-                responseBuffer.writeBytes(responseBytes);
-                ctx.writeAndFlush(responseBuffer);
-            } else {
-                System.out.println("将消息分发到Kafka中去：" + message);
+            if(request.getRequestType() == Constants.REQUEST_TYPE_AUTHENTICATE) {
+                // 将消息体反序列化为认证请求
+                AuthenticateRequestProto.AuthenticateRequest authenticateRequest =
+                        AuthenticateRequestProto.AuthenticateRequest.parseFrom(request.getBody());
+                System.out.println("收到客户端发送过来的认证请求：" + authenticateRequest);
+                // 调用业务逻辑处理组件进行认证
+                requestHandler.authenticate(authenticateRequest);
+                // 设置一下本地Session，维护uid和session映射关系，维护channelId和uid的关系
+                SessionManager sessionManager = SessionManager.getInstance();
+                sessionManager.addSession(authenticateRequest.getUid(), (SocketChannel) ctx.channel());
             }
         }
     }

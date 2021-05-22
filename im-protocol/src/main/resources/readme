@@ -1,0 +1,3 @@
+###一点说明
+protoc  --java_out=im/src AuthenticateResponse.ptoto
+protoc  --java_out=im/src AuthenticateRequest.ptoto

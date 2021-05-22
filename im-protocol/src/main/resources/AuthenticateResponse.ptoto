@@ -1,0 +1,12 @@
+package im;
+option java_package = "com.zsxg.im.protocol";
+option java_outer_classname = "AuthenticateResponseProto";
+
+message AuthenticateResponse {
+ required int32 status = 1;
+ required int32 errorCode = 2;
+ required string errorMessage = 3;
+ required string uid = 4;
+ required string token = 5;
+ required int64 timestamp = 6;
+}
