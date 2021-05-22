@@ -1,4 +1,4 @@
-package com.zhss.im.sdk.android;
+package com.zsxg.im.sdk.android;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
